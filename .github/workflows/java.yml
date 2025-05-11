@@ -56,33 +56,34 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
+          
       - name: Set build variables
+        id: vars
         shell: bash
         run: |
           case "${{ matrix.distribution }}" in
             amazoncorretto)
-              BASE_IMAGE="amazoncorretto:${{ matrix.version }}";;
+              BASE_IMAGE="amazoncorretto:${{ matrix.version }}-debian" ;;
             temurin)
-              BASE_IMAGE="eclipse-temurin:${{ matrix.version }}-jdk";;
+              BASE_IMAGE="eclipse-temurin:${{ matrix.version }}-jdk-bookworm" ;;
             openjdk)
-              BASE_IMAGE="openjdk:${{ matrix.version }}-jdk";;
+              BASE_IMAGE="openjdk:${{ matrix.version }}-jdk-slim-bookworm" ;;
           esac
-          echo "BASE_IMAGE=$BASE_IMAGE" >> $GITHUB_ENV
-          echo "IMAGE_TAG=ghcr.io/pyrohost/yolks:java_${{ matrix.distribution }}_${{ matrix.version }}_${{ matrix.variant }}" >> $GITHUB_ENV
+          echo "BASE_IMAGE=$BASE_IMAGE" >>"$GITHUB_ENV"
+          echo "IMAGE_TAG=ghcr.io/pyrohost/yolks:java_${{ matrix.distribution }}_${{ matrix.version }}_${{ matrix.variant }}" >>"$GITHUB_ENV"
 
       - name: Prepare build context
         run: |
           mkdir -p java/build
           cp src/entrypoints/java/${{ matrix.variant }}/entrypoint.sh java/build/
           chmod +x java/build/entrypoint.sh
-          cat > java/build/Dockerfile << 'EOF'
+          cat >java/build/Dockerfile <<'EOF'
           FROM --platform=$TARGETOS/$TARGETARCH ${{ env.BASE_IMAGE }}
 
           LABEL author="Pyro Inc."
           LABEL org.opencontainers.image.source="https://github.com/pyrohost/yolks"
           LABEL org.opencontainers.image.licenses=MIT
-          LABEL org.opencontainers.image.description="Docker image for Pterodactyl Java $([[ \"${{ matrix.variant }}\" == \"minecraft\" ]] && echo 'Minecraft servers' || echo 'applications')"
+          LABEL org.opencontainers.image.description="Docker image for Pterodactyl Java $([[ "${{ matrix.variant }}" == "minecraft" ]] && echo 'Minecraft servers' || echo 'applications')"
           LABEL org.opencontainers.image.version="${{ matrix.version }}"
 
           RUN rm -rf /usr/bin/dd /usr/bin/fallocate /usr/bin/truncate /usr/bin/xfs_mkfile && \
