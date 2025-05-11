@@ -56,20 +56,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Set build variables
         id: vars
         shell: bash
         run: |
-          case "${{ matrix.distribution }}" in
-            amazoncorretto)
-              BASE_IMAGE="amazoncorretto:${{ matrix.version }}-debian" ;;
-            temurin)
-              BASE_IMAGE="eclipse-temurin:${{ matrix.version }}-jdk-bookworm" ;;
-            openjdk)
-              BASE_IMAGE="openjdk:${{ matrix.version }}-jdk-slim-bookworm" ;;
-          esac
-          echo "BASE_IMAGE=$BASE_IMAGE" >>"$GITHUB_ENV"
+          echo "BASE_IMAGE=debian:bookworm-slim" >>"$GITHUB_ENV"
           echo "IMAGE_TAG=ghcr.io/pyrohost/yolks:java_${{ matrix.distribution }}_${{ matrix.version }}_${{ matrix.variant }}" >>"$GITHUB_ENV"
 
       - name: Prepare build context
@@ -86,11 +78,39 @@ jobs:
           LABEL org.opencontainers.image.description="Docker image for Pterodactyl Java $([[ "${{ matrix.variant }}" == "minecraft" ]] && echo 'Minecraft servers' || echo 'applications')"
           LABEL org.opencontainers.image.version="${{ matrix.version }}"
 
+          # Base packages
           RUN rm -rf /usr/bin/dd /usr/bin/fallocate /usr/bin/truncate /usr/bin/xfs_mkfile && \
               apt-get update -y && \
-              apt-get install -y curl jq unzip lsof ca-certificates openssl git tar sqlite3 fontconfig tzdata iproute2 libstdc++6 && \
+              apt-get install -y --no-install-recommends curl gnupg wget lsb-release jq unzip lsof ca-certificates openssl git tar sqlite3 fontconfig tzdata iproute2 libstdc++6 && \
               rm -rf /var/lib/apt/lists/*
 
+          # Install JDK depending on distribution
+          ARG JAVA_DISTRIBUTION="${{ matrix.distribution }}"
+          ARG JAVA_VERSION="${{ matrix.version }}"
+          RUN set -eux; \
+            if [ "$JAVA_DISTRIBUTION" = "openjdk" ]; then \
+              echo "Installing OpenJDK $JAVA_VERSION from Debian repositories"; \
+              apt-get update && apt-get install -y --no-install-recommends openjdk-${{ matrix.version }}-jdk && \
+              apt-get clean && rm -rf /var/lib/apt/lists/*; \
+            elif [ "$JAVA_DISTRIBUTION" = "temurin" ]; then \
+              echo "Installing Temurin $JAVA_VERSION via Adoptium APT repo"; \
+              mkdir -p /etc/apt/keyrings && \
+              curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | tee /etc/apt/keyrings/adoptium.asc && \
+              echo "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" > /etc/apt/sources.list.d/adoptium.list && \
+              apt-get update && apt-get install -y --no-install-recommends temurin-${{ matrix.version }}-jdk && \
+              apt-get clean && rm -rf /var/lib/apt/lists/*; \
+            elif [ "$JAVA_DISTRIBUTION" = "amazoncorretto" ]; then \
+              echo "Installing Amazon Corretto $JAVA_VERSION via AWS APT repo"; \
+              wget -O- https://apt.corretto.aws/corretto.key | gpg --dearmor -o /usr/share/keyrings/corretto-keyring.gpg && \
+              echo "deb [signed-by=/usr/share/keyrings/corretto-keyring.gpg] https://apt.corretto.aws stable main" > /etc/apt/sources.list.d/corretto.list && \
+              apt-get update && apt-get install -y --no-install-recommends java-${{ matrix.version }}-amazon-corretto-jdk && \
+              apt-get clean && rm -rf /var/lib/apt/lists/*; \
+            else \
+              echo "Unknown distribution $JAVA_DISTRIBUTION"; \
+              exit 1; \
+            fi
+
+          # Create non-root user expected by Pterodactyl
           RUN useradd -d /home/container -m container
           USER container
           ENV USER=container HOME=/home/container
