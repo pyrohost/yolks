@@ -28,16 +28,31 @@ jobs:
         distribution: [amazoncorretto, temurin, openjdk]
         version: [8, 11, 16, 17, 18, 19, 21, 22]
         variant: [core, minecraft]
-      exclude:
-        - distribution: amazoncorretto
-          version: [16, 18, 19, 22]
-        - distribution: openjdk
-          version: [16, 18, 19, 21, 22]
+        exclude:
+          # amazoncorretto: remove versions 16, 18, 19, 22
+          - distribution: amazoncorretto
+            version: 16
+          - distribution: amazoncorretto
+            version: 18
+          - distribution: amazoncorretto
+            version: 19
+          - distribution: amazoncorretto
+            version: 22
+          # openjdk: remove versions 16, 18, 19, 21, 22
+          - distribution: openjdk
+            version: 16
+          - distribution: openjdk
+            version: 18
+          - distribution: openjdk
+            version: 19
+          - distribution: openjdk
+            version: 21
+          - distribution: openjdk
+            version: 22
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
