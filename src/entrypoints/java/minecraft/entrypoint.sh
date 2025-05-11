@@ -22,101 +22,12 @@ java -version
 
 JAVA_MAJOR_VERSION=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}' | awk -F '.' '{print $1}')
 
-if [[ "$MALWARE_SCAN" == "1" ]]; then
-	if [[ ! -f "/MCAntiMalware.jar" ]]; then
-		echo -e "${LOG_PREFIX} Malware scanning is only available for Java 17 and above, skipping..."
-	else
-		echo -e "${LOG_PREFIX} Scanning for malware... (This may take a while)"
-
-		java -jar /MCAntiMalware.jar --scanDirectory . --singleScan true --disableAutoUpdate true
-
-		if [ $? -eq 0 ]; then
-			echo -e "${LOG_PREFIX} Malware scan has passed"
-		else
-			echo -e "${LOG_PREFIX} Malware scan has failed"
-			exit 1
-		fi
-	fi
-else
-	echo -e "${LOG_PREFIX} Skipping malware scan..."
-fi
-
-if [[ "$AUTOMATIC_UPDATING" == "1" ]]; then
-	if [[ "$SERVER_JARFILE" == "server.jar" ]]; then
-		printf "${LOG_PREFIX} Checking for updates...\n"
-
-		# Check if libraries/net/minecraftforge/forge exists
-		if [ -d "libraries/net/minecraftforge/forge" ] && [ -z "${HASH}" ]; then
-			# get first folder in libraries/net/minecraftforge/forge
-			FORGE_VERSION=$(ls libraries/net/minecraftforge/forge | head -n 1)
-
-			# Check if -server.jar or -universal.jar exists in libraries/net/minecraftforge/forge/${FORGE_VERSION}
-			FILES=$(ls libraries/net/minecraftforge/forge/${FORGE_VERSION} | grep -E "(-server.jar|-universal.jar)")
-
-			# Check if there are any files
-			if [ -n "${FILES}" ]; then
-				# get first file in libraries/net/minecraftforge/forge/${FORGE_VERSION}
-				FILE=$(echo "${FILES}" | head -n 1)
-
-				# Hash file
-				HASH=$(sha256sum libraries/net/minecraftforge/forge/${FORGE_VERSION}/${FILE} | awk '{print $1}')
-			fi
-		fi
-
-		# Check if libraries/net/neoforged/neoforge folder exists
-		if [ -d "libraries/net/neoforged/neoforge" ] && [ -z "${HASH}" ]; then
-			# get first folder in libraries/net/neoforged/neoforge
-			NEOFORGE_VERSION=$(ls libraries/net/neoforged/neoforge | head -n 1)
-
-			# Check if -server.jar or -universal.jar exists in libraries/net/neoforged/neoforge/${NEOFORGE_VERSION}
-			FILES=$(ls libraries/net/neoforged/neoforge/${NEOFORGE_VERSION} | grep -E "(-server.jar|-universal.jar)")
-
-			# Check if there are any files
-			if [ -n "${FILES}" ]; then
-				# get first file in libraries/net/neoforged/neoforge/${NEOFORGE_VERSION}
-				FILE=$(echo "${FILES}" | head -n 1)
-
-				# Hash file
-				HASH=$(sha256sum libraries/net/neoforged/neoforge/${NEOFORGE_VERSION}/${FILE} | awk '{print $1}')
-			fi
-		fi
-
-		# Hash server jar file
-		if [ -z "${HASH}" ]; then
-			HASH=$(sha256sum $SERVER_JARFILE | awk '{print $1}')
-		fi
-
-		# Check if hash is set
-		if [ -n "${HASH}" ]; then
-			API_RESPONSE=$(curl -s "https://versions.mcjars.app/api/v1/build/$HASH")
-
-			# Check if .success is true
-			if [ "$(echo $API_RESPONSE | jq -r '.success')" = "true" ]; then
-				if [ "$(echo $API_RESPONSE | jq -r '.build.id')" != "$(echo $API_RESPONSE | jq -r '.latest.id')" ]; then
-					echo -e "${LOG_PREFIX} New build found. Updating server..."
-
-					BUILD_ID=$(echo $API_RESPONSE | jq -r '.latest.id')
-					bash <(curl -s "https://versions.mcjars.app/api/v1/script/$BUILD_ID/bash?echo=false")
-
-					echo -e "${LOG_PREFIX} Server has been updated"
-				else
-					echo -e "${LOG_PREFIX} Server is up to date"
-				fi
-			else
-				echo -e "${LOG_PREFIX} Could not check for updates. Skipping update check."
-			fi
-		else
-			echo -e "${LOG_PREFIX} Could not find hash. Skipping update check."
-		fi
-	else
-		echo -e "${LOG_PREFIX} Automatic updating is enabled, but the server jar file is not server.jar. Skipping update check."
-	fi
-fi
+# Anti-malware and auto-updating features have been removed
 
 # check if libraries/net/minecraftforge/forge exists and the SERVER_JARFILE file does not exist
 if [ -d "libraries/net/minecraftforge/forge" ] && [ ! -f "$SERVER_JARFILE" ]; then
 	echo -e "${LOG_PREFIX} Downloading Forge server jar file..."
-	curl -s https://s3.mcjars.app/forge/ForgeServerJAR.jar -o $SERVER_JARFILE
+	curl -s https://s3.pyrohost.app/forge/ForgeServerJAR.jar -o $SERVER_JARFILE
 
 	echo -e "${LOG_PREFIX} Forge server jar file has been downloaded"
 fi
@@ -124,7 +35,7 @@ fi
 # check if libraries/net/neoforged/neoforge exists and the SERVER_JARFILE file does not exist
 if [ -d "libraries/net/neoforged/neoforge" ] && [ ! -f "$SERVER_JARFILE" ]; then
 	echo -e "${LOG_PREFIX} Downloading NeoForge server jar file..."
-	curl -s https://s3.mcjars.app/neoforge/NeoForgeServerJAR.jar -o $SERVER_JARFILE
+	curl -s https://s3.pyrohost.app/neoforge/NeoForgeServerJAR.jar -o $SERVER_JARFILE
 
 	echo -e "${LOG_PREFIX} NeoForge server jar file has been downloaded"
 fi
@@ -132,7 +43,7 @@ fi
 # check if libraries/net/neoforged/forge exists and the SERVER_JARFILE file does not exist
 if [ -d "libraries/net/neoforged/forge" ] && [ ! -f "$SERVER_JARFILE" ]; then
 	echo -e "${LOG_PREFIX} Downloading NeoForge server jar file..."
-	curl -s https://s3.mcjars.app/neoforge/NeoForgeServerJAR.jar -o $SERVER_JARFILE
+	curl -s https://s3.pyrohost.app/neoforge/NeoForgeServerJAR.jar -o $SERVER_JARFILE
 
 	echo -e "${LOG_PREFIX} NeoForge server jar file has been downloaded"
 fi

@@ -1,49 +1,98 @@
-name: build java
+name: Build Java Docker Images
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 1 * *"
+    - cron: '0 0 1 * *' # Monthly on the 1st at midnight UTC
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
-      - java/**
+      - 'src/entrypoints/java/**'
+      - '.github/workflows/java.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  push:
-    name: "pterodactyl-yolks:java_${{ matrix.tag }}"
+  build-and-push:
+    name: Build yolks:java_${{ matrix.distribution }}_${{ matrix.version }}_${{ matrix.variant }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+
     strategy:
       fail-fast: false
       matrix:
-        tag:
-          - 8
-          - 11
-          - 16
-          - 17
-          - 18
-          - 19
-          - 21
-          - 22
-          - 23
+        distribution: [amazoncorretto, temurin, openjdk]
+        version: [8, 11, 16, 17, 18, 19, 21, 22]
+        variant: [core, minecraft]
+      exclude:
+        - distribution: amazoncorretto
+          version: [16, 18, 19, 22]
+        - distribution: openjdk
+          version: [16, 18, 19, 21, 22]
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: docker/setup-qemu-action@v2
-      - uses: docker/setup-buildx-action@v2
-        with:
-          buildkitd-flags: --debug
-      - uses: docker/login-action@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v4
+
+      - name: Set build variables
+        shell: bash
+        run: |
+          case "${{ matrix.distribution }}" in
+            amazoncorretto)
+              BASE_IMAGE="amazoncorretto:${{ matrix.version }}";;
+            temurin)
+              BASE_IMAGE="eclipse-temurin:${{ matrix.version }}-jdk";;
+            openjdk)
+              BASE_IMAGE="openjdk:${{ matrix.version }}-jdk";;
+          esac
+          echo "BASE_IMAGE=$BASE_IMAGE" >> $GITHUB_ENV
+          echo "IMAGE_TAG=ghcr.io/pyrohost/yolks:java_${{ matrix.distribution }}_${{ matrix.version }}_${{ matrix.variant }}" >> $GITHUB_ENV
+
+      - name: Prepare build context
+        run: |
+          mkdir -p java/build
+          cp src/entrypoints/java/${{ matrix.variant }}/entrypoint.sh java/build/
+          chmod +x java/build/entrypoint.sh
+          cat > java/build/Dockerfile << 'EOF'
+          FROM --platform=$TARGETOS/$TARGETARCH ${{ env.BASE_IMAGE }}
+
+          LABEL author="Pyro Inc."
+          LABEL org.opencontainers.image.source="https://github.com/pyrohost/yolks"
+          LABEL org.opencontainers.image.licenses=MIT
+          LABEL org.opencontainers.image.description="Docker image for Pterodactyl Java $([[ \"${{ matrix.variant }}\" == \"minecraft\" ]] && echo 'Minecraft servers' || echo 'applications')"
+          LABEL org.opencontainers.image.version="${{ matrix.version }}"
+
+          RUN rm -rf /usr/bin/dd /usr/bin/fallocate /usr/bin/truncate /usr/bin/xfs_mkfile && \
+              apt-get update -y && \
+              apt-get install -y curl jq unzip lsof ca-certificates openssl git tar sqlite3 fontconfig tzdata iproute2 libstdc++6 && \
+              rm -rf /var/lib/apt/lists/*
+
+          RUN useradd -d /home/container -m container
+          USER container
+          ENV USER=container HOME=/home/container
+          WORKDIR /home/container
+
+          COPY entrypoint.sh /entrypoint.sh
+          CMD ["/bin/bash", "/entrypoint.sh"]
+          EOF
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
         with:
-          context: ./java
-          file: ./java/${{ matrix.tag }}/Dockerfile
+          context: java/build
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ghcr.io/mcjars/pterodactyl-yolks:java_${{ matrix.tag }}
+          tags: ${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
